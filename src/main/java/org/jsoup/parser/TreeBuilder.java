@@ -31,6 +31,7 @@ abstract class TreeBuilder {
     ParseSettings settings;
     TagSet tagSet; // the tags we're using in this parse
     @Nullable NodeVisitor nodeListener; // optional listener for node add / removes
+    @Nullable CleaningParseHook cleanHook; // optional in-parse cleaning, from a Parser's Cleaner
 
     private Token.StartTag start; // start tag to process
     private final Token.EndTag end  = new Token.EndTag(this);
@@ -62,6 +63,12 @@ abstract class TreeBuilder {
         start = new Token.StartTag(this);
         currentToken = start; // init current token to the virtual start token.
         this.baseUri = baseUri;
+        if (parser.cleaner() != null) {
+            if (parser.cleaningErrors() != null) parser.cleaningErrors().clear();
+            cleanHook = new CleaningParseHook(parser.cleaner(), parser.cleaningErrors());
+        } else {
+            cleanHook = null;
+        }
         onNodeInserted(doc);
     }
 
@@ -347,6 +354,7 @@ abstract class TreeBuilder {
     void onNodeInserted(Node node) {
         trackNodePosition(node, true);
 
+        if (cleanHook != null) cleanHook.head(node);
         if (nodeListener != null)
             nodeListener.head(node, stack.size());
     }
@@ -358,6 +366,7 @@ abstract class TreeBuilder {
     void onNodeClosed(Node node) {
         trackNodePosition(node, false);
 
+        if (cleanHook != null) cleanHook.tail(node);
         if (nodeListener != null)
             nodeListener.tail(node, stack.size());
     }

@@ -701,4 +701,152 @@ public class CleanerTest {
         String input = "<style></t</style><img>";
         assertEquals("<style></t</style>", Jsoup.clean(input, policy));
     }
+
+    // ---- Issue #2284: Cleaner & Safelist API revamp ----
+
+    @Test void cleanElementFragment() {
+        Element dirty = Jsoup.parseBodyFragment("<div><p onclick='x'>Hi <b>there</b><script>bad()</script></p></div>").body().child(0);
+        Element clean = new Cleaner(Safelist.basic()).clean(dirty);
+
+        assertEquals("<div><p>Hi <b>there</b></p></div>", TextUtil.stripNewlines(clean.outerHtml()));
+        // input unchanged
+        assertEquals("<div><p onclick=\"x\">Hi <b>there</b><script>bad()</script></p></div>", TextUtil.stripNewlines(dirty.outerHtml()));
+    }
+
+    @Test void cleanElementKeepsUnsafeRootAsContainer() {
+        Element dirty = Jsoup.parseBodyFragment("<div class=x><p>Hi</p></div>").body().child(0);
+        Element clean = new Cleaner(Safelist.basic()).clean(dirty); // div not allowed by basic
+
+        assertEquals("<div><p>Hi</p></div>", TextUtil.stripNewlines(clean.outerHtml())); // root retained, but attributes dropped
+    }
+
+    @Test void cleanElementXml() {
+        Element dirty = new Element(new Tag("root", Parser.NamespaceXml), "");
+        dirty.appendElement("p").attr("onclick", "x").text("Hi");
+        Element clean = new Cleaner(Safelist.relaxed()).clean(dirty);
+
+        assertEquals("<root><p>Hi</p></root>", TextUtil.stripNewlines(clean.outerHtml()));
+    }
+
+    @Test void cleanDocumentTracksErrors() {
+        Document dirty = Jsoup.parse("<p onclick=x>One <script>bad</script><b>two</b></p>");
+        CleaningErrors errors = new CleaningErrors();
+        Document clean = new Cleaner(Safelist.basic()).clean(dirty, errors);
+
+        assertEquals("<p>One <b>two</b></p>", clean.body().html());
+        assertEquals(1, errors.droppedTags().size());
+        assertEquals("script", errors.droppedTags().get(0).tagName());
+        assertEquals(1, errors.droppedNodes().size()); // the script's data node
+        assertEquals("#data", errors.droppedNodes().get(0).nodeName());
+        assertEquals(1, errors.droppedAttributes().size());
+        assertEquals("p", errors.droppedAttributes().get(0).tagName());
+        assertEquals("onclick", errors.droppedAttributes().get(0).attributeKey());
+        assertEquals(0, errors.addedAttributes().size());
+    }
+
+    @Test void cleanTracksAddedEnforcedAttributes() {
+        CleaningErrors errors = new CleaningErrors();
+        new Cleaner(Safelist.basic()).clean(Jsoup.parse("<a href='http://example.com/'>Link</a>"), errors);
+
+        assertEquals(1, errors.addedAttributes().size());
+        CleaningErrors.AddedAttribute added = errors.addedAttributes().get(0);
+        assertEquals("a", added.tagName());
+        assertEquals("rel", added.attributeKey());
+        assertEquals("nofollow", added.value());
+    }
+
+    @Test void cleaningErrorsClearBetweenRuns() {
+        CleaningErrors errors = new CleaningErrors();
+        Cleaner cleaner = new Cleaner(Safelist.basic());
+        cleaner.clean(Jsoup.parse("<p onclick=x>bad</p>"), errors);
+        assertEquals(1, errors.numDropped());
+
+        cleaner.clean(Jsoup.parse("<p>ok</p>"), errors);
+        assertEquals(0, errors.size());
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test void isValidCanReportErrors() {
+        Cleaner cleaner = new Cleaner(Safelist.basic());
+        CleaningErrors errors = new CleaningErrors();
+
+        assertTrue(cleaner.isValid(Jsoup.parse("<p>Hi <b>there</b></p>"), errors));
+        assertTrue(errors.isEmpty());
+
+        assertFalse(cleaner.isValid(Jsoup.parse("<p onclick=x>Hi</p>"), errors));
+        assertEquals(1, errors.numDropped());
+        assertEquals("onclick", errors.droppedAttributes().get(0).attributeKey());
+
+        assertFalse(cleaner.isValidBodyHtml("<p onclick=x>Hi</p>", errors));
+        assertEquals(1, errors.numDropped());
+    }
+
+    @Test void isValidConsidersParseErrors() {
+        Parser tracking = Parser.htmlParser().setTrackErrors(10);
+        Document doc = Jsoup.parse("<p>Test <b><a href='http://example.com/'>OK</b></p>", "", tracking);
+        assertFalse(tracking.getErrors().isEmpty());
+
+        // the same HTML, without error tracking, is considered valid (no cleaning changes)
+        Document untracked = Jsoup.parse("<p>Test <b><a href='http://example.com/'>OK</b></p>");
+        Cleaner cleaner = new Cleaner(Safelist.basic());
+        assertTrue(cleaner.isValid(untracked));
+        assertFalse(cleaner.isValid(doc)); // but the tracked parse errors invalidate it
+    }
+
+    @Test void rejectedElementsCanBeDiscarded() {
+        String html = "<div><form><p>Keep?<b>B</b></p></form><p>After</p></div>";
+
+        assertEquals("<div><p>Keep?<b>B</b></p><p>After</p></div>",
+            TextUtil.stripNewlines(Jsoup.clean(html, Safelist.relaxed())));
+
+        Safelist discard = Safelist.relaxed().rejectedElementHandling("form", Safelist.RejectedElementHandling.DiscardSubtree);
+        assertEquals("<div><p>After</p></div>", TextUtil.stripNewlines(Jsoup.clean(html, discard)));
+    }
+
+    @Test void rejectedElementsCanBeDiscardedForAll() {
+        String html = "<div><form><p>Keep?<b>B</b></p></form><p>After</p></div>";
+        Safelist discardAll = Safelist.relaxed().rejectedElementHandling(Safelist.RejectedElementHandling.DiscardSubtree);
+        assertEquals("<div><p>After</p></div>", TextUtil.stripNewlines(Jsoup.clean(html, discardAll)));
+
+        // unwrap is the default
+        assertEquals(Safelist.RejectedElementHandling.Unwrap, Safelist.relaxed().rejectedElementHandling("form"));
+        assertEquals(Safelist.RejectedElementHandling.DiscardSubtree, discardAll.rejectedElementHandling("form"));
+    }
+
+    @Test void cleansDataImageProtocol() {
+        Safelist safelist = Safelist.relaxed().addProtocols("img", "src", "data:image");
+        assertEquals("<img src=\"data:image/png;base64,iVBORw0KGgo=\">",
+            Jsoup.clean("<img src='data:image/png;base64,iVBORw0KGgo='>", safelist));
+        // only base64 images are allowed
+        assertEquals("<img>", Jsoup.clean("<img src='data:text/html;base64,PHNjcmlwdD4='>", safelist));
+        assertEquals("<img>", Jsoup.clean("<img src='data:image/png;base64,alert(1)'>", safelist));
+        assertEquals("<img>", Jsoup.clean("<img src='data:image/png,notbase64'>", safelist));
+    }
+
+    @Test void cleansNamespacedSvg() {
+        String html = "<p>Hi <svg viewBox='0 0 10 10'><circle cx=1 cy=2 r=3 fill='red'/><script>alert(1)</script></svg></p>";
+        String clean = TextUtil.stripNewlines(Jsoup.clean(html, Safelist.relaxed5()));
+
+        assertEquals("<p>Hi<svg viewBox=\"0 0 10 10\"><circle cx=\"1\" cy=\"2\" r=\"3\" fill=\"red\" /></svg></p>", clean);
+        // the legacy list does not allow svg at all
+        assertEquals("<p>Hi</p>", TextUtil.stripNewlines(Jsoup.clean(html, Safelist.relaxed())));
+    }
+
+    @Test void html5Safelists() {
+        assertEquals("Hello <b>there</b>", TextUtil.stripNewlines(Jsoup.clean("Hello <b>there</b><script>x</script>", Safelist.simpleText5())));
+        assertTrue(Safelist.simpleText5().isSafeTag("mark"));
+        assertFalse(Safelist.simpleText().isSafeTag("mark"));
+
+        assertEquals("<article><p>Hi</p></article>", TextUtil.stripNewlines(Jsoup.clean("<article><p>Hi</p></article>", Safelist.relaxed5())));
+        assertEquals("<img src=\"http://example.com/a.png\" alt=\"A\">",
+            TextUtil.stripNewlines(Jsoup.clean("<img src='http://example.com/a.png' alt=A>", Safelist.basicWithImages5())));
+    }
+
+    @Test void wildcardAttributes() {
+        String html = "<p data-x='1' aria-label='y' class='z'>Hi</p>";
+        assertEquals("<p data-x=\"1\" aria-label=\"y\">Hi</p>", Jsoup.clean(html, Safelist.relaxed5()));
+
+        Safelist explicit = Safelist.relaxed().addAttributes(":all", "data-*");
+        assertEquals("<p data-x=\"1\">Hi</p>", Jsoup.clean(html, explicit));
+    }
 }

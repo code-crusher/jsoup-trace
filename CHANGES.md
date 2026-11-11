@@ -4,6 +4,15 @@
 
 ### Improvements
 * Added the opt-in `Tag.RcDataRecover` option to recover content after missing `title` or `textarea` end tags. [#2640](https://github.com/jhy/jsoup/issues/2640)
+* Revamped the `Cleaner` and `Safelist` APIs. [#2284](https://github.com/jhy/jsoup/issues/2284)
+  * A configured `Cleaner` can be supplied to a `Parser` (via `Parser.cleaner(Cleaner)`), so that tokenization, tree construction, and sanitization happen in one pass. This supports any regular parser input (string, file, connection, or reader), both HTML and XML, and both body fragments and full documents. `StreamParser` emits only safe elements.
+  * `Cleaner.clean(Element)` cleans an already-parsed fragment in either syntax.
+  * Added `CleaningErrors` to report the tags and attributes that were dropped, and the attributes that were added, by a clean. Supply it to `Cleaner`'s `clean` and `isValid` overloads, or to `Parser.cleaningErrors(CleaningErrors)`.
+  * `Cleaner.isValid(Document)` now also considers parse errors, when the document's parser has error tracking enabled.
+  * `Safelist` configuration is now namespace-aware, and accepts `Tag` objects: `addTags(Tag...)`, `addAttributes(Tag, ...)`, `addProtocols(Tag, ...)`, `addEnforcedAttribute(Tag, ...)`, and the corresponding `isSafe*` methods.
+  * Added attribute wildcards (`data-*`, `aria-*`), and validation of `data:image` base64 URLs.
+  * Added HTML5-friendly safelists `simpleText5()`, `basic5()`, `basicWithImages5()`, and `relaxed5()`, which add newer HTML elements and a conservative SVG and MathML subset. The existing lists are unchanged.
+  * Added `Safelist.RejectedElementHandling` to choose between unwrapping a rejected element (retaining its permitted descendants, as before) and discarding its entire subtree, configurable per element or as a default.
 
 ### Bug Fixes
 * Fixed `Element.shallowClone()`, `Document.shallowClone()`, and `Document.clone()` which could retain cached child elements from the original. After adding children to a shallow clone, `children()` could return the original's children instead of the clone's own. [#2638](https://github.com/jhy/jsoup/issues/2638)

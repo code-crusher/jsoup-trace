@@ -5,6 +5,8 @@ import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
+import org.jsoup.safety.Cleaner;
+import org.jsoup.safety.CleaningErrors;
 import org.jspecify.annotations.Nullable;
 
 import java.io.Reader;
@@ -32,6 +34,8 @@ public class Parser implements Cloneable {
     private @Nullable TagSet tagSet;
     private final ReentrantLock lock = new ReentrantLock();
     private int maxDepth;
+    private @Nullable Cleaner cleaner;
+    private @Nullable CleaningErrors cleaningErrors; // optional detailed results of the in-parse cleaning
 
     /**
      * Create a new Parser, using the specified TreeBuilder
@@ -65,6 +69,8 @@ public class Parser implements Cloneable {
         trackPosition = copy.trackPosition;
         maxDepth = copy.maxDepth;
         tagSet = new TagSet(copy.tagSet());
+        cleaner = copy.cleaner; // the cleaner is safe to share
+        cleaningErrors = copy.cleaningErrors;
     }
 
     /**
@@ -266,6 +272,67 @@ public class Parser implements Cloneable {
 
     public String defaultNamespace() {
         return getTreeBuilder().defaultNamespace();
+    }
+
+    /**
+     Set a {@link Cleaner} to sanitize the input as it is parsed, in a single pass. When set, the parsed document will
+     only contain elements and attributes allowed by the cleaner's safelist. This works with any regular parser input
+     (a string, file, connection, or reader), and with either the HTML or XML {@link Document.OutputSettings.Syntax
+     syntax}.
+     <p>The cleaning happens during the parse, so nodes that are rejected by the safelist are never added to the
+     document tree. Rejected elements are unwrapped (their permitted descendants are retained) or discarded entirely,
+     as configured on the {@link org.jsoup.safety.Safelist}.</p>
+     <p>For example:
+     <pre>{@code
+     Cleaner cleaner = new Cleaner(Safelist.relaxed5());
+     Parser parser = Parser.htmlParser().cleaner(cleaner);
+     Document clean = Jsoup.parse(untrustedHtml, "https://example.com/", parser);
+     }</pre>
+     </p>
+     <p>Cleaning during the parse does not support streaming emission of the rejected nodes via a {@link StreamParser};
+     the stream will emit only the safe elements. To clean an already-parsed document, use
+     {@link Cleaner#clean(Document)} instead.</p>
+
+     @param cleaner the cleaner to apply during the parse; or {@code null} to disable cleaning
+     @return this Parser, for chaining
+     @since 1.24.2
+     @see Cleaner
+     */
+    public Parser cleaner(@Nullable Cleaner cleaner) {
+        this.cleaner = cleaner;
+        return this;
+    }
+
+    /**
+     Get the {@link Cleaner} configured to sanitize input during the parse, if any.
+     @return the configured cleaner, or {@code null} if cleaning is not enabled
+     @since 1.24.2
+     */
+    public @Nullable Cleaner cleaner() {
+        return cleaner;
+    }
+
+    /**
+     Supply a {@link CleaningErrors} instance to be populated with the detailed results of the in-parse cleaning, as
+     configured by {@link #cleaner(Cleaner)}. The instance is cleared at the start of each parse.
+     <p>If no cleaner is configured, this has no effect.</p>
+
+     @param cleaningErrors the error collector to populate; or {@code null} to not collect
+     @return this Parser, for chaining
+     @since 1.24.2
+     */
+    public Parser cleaningErrors(@Nullable CleaningErrors cleaningErrors) {
+        this.cleaningErrors = cleaningErrors;
+        return this;
+    }
+
+    /**
+     Get the {@link CleaningErrors} instance that in-parse cleaning results are collected into, if configured.
+     @return the cleaning error collector, or {@code null} if not configured
+     @since 1.24.2
+     */
+    public @Nullable CleaningErrors cleaningErrors() {
+        return cleaningErrors;
     }
 
     // static parse functions below
