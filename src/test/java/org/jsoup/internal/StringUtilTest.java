@@ -160,6 +160,38 @@ public class StringUtilTest {
         assertEquals("foo:bar", resolve("\nhttps://\texample.com/", "\r\nfo\to:ba\br"));
     }
 
+    @Test void resolvesSrcsetUrls() {
+        // https://github.com/jhy/jsoup/issues/2603
+        String base = "https://example.com/page/";
+        assertEquals("https://example.com/page/a.png", StringUtil.resolveSrcset(base, "a.png"));
+        assertEquals("https://example.com/page/a.png 1x, https://example.com/page/b.png 2x",
+            StringUtil.resolveSrcset(base, "a.png 1x, b.png 2x"));
+        assertEquals("https://example.com/page/a.png 640w, https://cdn.example.com/b.png 2x",
+            StringUtil.resolveSrcset(base, "/page/a.png 640w, https://cdn.example.com/b.png 2x"));
+        // a candidate URL may itself contain commas
+        assertEquals("https://example.com/page/w_120,c_limit/a.jpg 120w",
+            StringUtil.resolveSrcset(base, "w_120,c_limit/a.jpg 120w"));
+        // separators without descriptors, and extra whitespace
+        assertEquals("https://example.com/page/a.png, https://example.com/page/b.png",
+            StringUtil.resolveSrcset(base, "  a.png ,\n b.png  "));
+        // empty or unresolvable candidates are dropped
+        assertEquals("", StringUtil.resolveSrcset(base, ""));
+        assertEquals("", StringUtil.resolveSrcset("", "/page/a.png")); // no base, so no relative resolution
+        assertEquals("https://example.com/a.png", StringUtil.resolveSrcset("", "https://example.com/a.png"));
+        assertEquals("https://example.com/page/a.png", StringUtil.resolveSrcset(base, "a.png, ,"));
+    }
+
+    @Test void identifiesSrcsetAttributes() {
+        assertTrue(StringUtil.isSrcsetAttribute("srcset"));
+        assertTrue(StringUtil.isSrcsetAttribute("srcSet"));
+        assertTrue(StringUtil.isSrcsetAttribute("imagesrcset"));
+        assertTrue(StringUtil.isSrcsetAttribute("data-srcset"));
+        assertFalse(StringUtil.isSrcsetAttribute("src"));
+        assertFalse(StringUtil.isSrcsetAttribute("href"));
+        assertFalse(StringUtil.isSrcsetAttribute("notsrcset"));
+        assertFalse(StringUtil.isSrcsetAttribute("source"));
+    }
+
     @Test void allowsSpaceInUrl() {
         assertEquals("https://example.com/foo bar/", resolve("HTTPS://example.com/example/", "../foo bar/"));
     }

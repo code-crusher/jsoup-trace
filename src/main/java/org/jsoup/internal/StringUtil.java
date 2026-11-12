@@ -348,6 +348,80 @@ public final class StringUtil {
     }
     private static final Pattern validUriScheme = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+-.]*:");
 
+    /**
+     Resolves each URL in a srcset-style attribute value (e.g. {@code srcset}, {@code imagesrcset}) against the
+     supplied base URL, preserving each candidate's descriptor.
+     <p>The value is parsed as a list of image candidate strings, per the
+     <a href="https://html.spec.whatwg.org/#parse-a-srcset-attribute">HTML spec</a>: each candidate is a URL (which may
+     itself contain commas), optionally followed by whitespace and a descriptor such as {@code 2x} or {@code 640w}.
+     Candidates are separated by commas.</p>
+     @param baseUrl the base URL to resolve relative URLs against
+     @param srcset the srcset attribute value to resolve
+     @return the resolved srcset value, with candidates joined by {@code ", "}; or the empty string if no candidate
+     URL could be resolved
+     */
+    public static String resolveSrcset(String baseUrl, String srcset) {
+        StringBuilder sb = borrowBuilder();
+        boolean first = true;
+        int len = srcset.length();
+        int pos = 0;
+        while (pos < len) {
+            // skip leading whitespace and candidate-separating commas
+            while (pos < len && (isWhitespace(srcset.charAt(pos)) || srcset.charAt(pos) == ',')) pos++;
+            if (pos >= len) break;
+
+            int urlStart = pos;
+            while (pos < len && !isWhitespace(srcset.charAt(pos))) pos++;
+            String url = srcset.substring(urlStart, pos);
+            String descriptor = "";
+            if (url.endsWith(",")) {
+                // a trailing comma separates candidates; this candidate has no descriptor
+                int end = url.length();
+                while (end > 0 && url.charAt(end - 1) == ',') end--;
+                url = url.substring(0, end);
+            } else {
+                // collect the descriptor up to the next top-level comma (commas within parentheses are part of it)
+                while (pos < len && isWhitespace(srcset.charAt(pos))) pos++;
+                int descStart = pos;
+                int depth = 0;
+                while (pos < len) {
+                    char c = srcset.charAt(pos);
+                    if (c == ',' && depth == 0) break;
+                    if (c == '(') depth++;
+                    else if (c == ')' && depth > 0) depth--;
+                    pos++;
+                }
+                descriptor = srcset.substring(descStart, pos).trim();
+            }
+            if (url.isEmpty()) continue;
+
+            String absUrl = resolve(baseUrl, url);
+            if (absUrl.isEmpty()) continue; // couldn't be made absolute; drop the candidate (as absUrl would return empty)
+            if (!first) sb.append(", ");
+            sb.append(absUrl);
+            if (!descriptor.isEmpty()) sb.append(' ').append(descriptor);
+            first = false;
+        }
+        return releaseBuilder(sb);
+    }
+
+    /**
+     Tests if the supplied attribute key is a srcset-style attribute, such as {@code srcset}, {@code imagesrcset}, or
+     {@code data-srcset}.
+     */
+    public static boolean isSrcsetAttribute(String attributeKey) {
+        final String srcset = "srcset";
+        int start = attributeKey.length() - srcset.length();
+        if (start < 0) return false;
+        for (int i = 0; i < srcset.length(); i++) {
+            if (Character.toLowerCase(attributeKey.charAt(start + i)) != srcset.charAt(i)) return false;
+        }
+        if (start == 0) return true; // srcset
+        char prev = attributeKey.charAt(start - 1);
+        if (prev == '-' || prev == ':') return true; // data-srcset, xlink:srcset
+        return start == 5 && attributeKey.regionMatches(true, 0, "image", 0, 5); // imagesrcset
+    }
+
     /** Validates that an HTTP(S) URL has the host required by its scheme. */
     private static void validateHttpUrl(URL url) throws MalformedURLException {
         if (isHttpScheme(url.getProtocol()) && url.getHost().isEmpty())

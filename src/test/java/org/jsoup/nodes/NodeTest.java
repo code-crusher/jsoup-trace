@@ -63,6 +63,41 @@ public class NodeTest {
         assertEquals(img.absUrl("src"), img.attr("abs:src"));
     }
 
+    @Test public void handlesAbsOnSrcset() {
+        // https://github.com/jhy/jsoup/issues/2603
+        Document doc = Jsoup.parse("<img srcset='/img/a.png 1x, /img/b.png 2x, https://cdn.example.com/c.png 3x'>", "https://example.com/page/");
+        Element img = doc.select("img").first();
+
+        assertEquals("https://example.com/img/a.png 1x, https://example.com/img/b.png 2x, https://cdn.example.com/c.png 3x",
+            img.absUrl("srcset"));
+        assertEquals(img.absUrl("srcset"), img.attr("abs:srcset"));
+    }
+
+    @Test public void handlesAbsOnSrcsetWithCommasInUrls() {
+        Document doc = Jsoup.parse("<source srcset='w_120,c_limit/a.jpg 120w, w_240,c_limit/b.jpg 240w'>", "https://cdn.example.com/photos/");
+        Element source = doc.select("source").first();
+
+        assertEquals("https://cdn.example.com/photos/w_120,c_limit/a.jpg 120w, https://cdn.example.com/photos/w_240,c_limit/b.jpg 240w",
+            source.absUrl("srcset"));
+    }
+
+    @Test public void handlesAbsOnImagesrcset() {
+        Document doc = Jsoup.parse("<link rel=preload as=image imagesrcset='/img/a.png 1x, /img/b.png 2x'>", "https://example.com/");
+        Element link = doc.select("link").first();
+
+        assertEquals("https://example.com/img/a.png 1x, https://example.com/img/b.png 2x", link.absUrl("imagesrcset"));
+    }
+
+    @Test public void srcsetAbsUrlEmptyWhenNoBaseOrAbsolute() {
+        Document doc = Jsoup.parse("<img srcset='/img/a.png 1x'>");
+        Element img = doc.select("img").first();
+        assertEquals("", img.absUrl("srcset"));
+        assertFalse(img.hasAttr("abs:srcset"));
+
+        Document absDoc = Jsoup.parse("<img srcset='https://example.com/img/a.png 1x'>");
+        assertEquals("https://example.com/img/a.png 1x", absDoc.select("img").first().absUrl("srcset"));
+    }
+
     @Test public void handlesAbsPrefixOnHasAttr() {
         // 1: no abs url; 2: has abs url
         Document doc = Jsoup.parse("<a id=1 href='/foo'>One</a> <a id=2 href='https://jsoup.org/'>Two</a>");

@@ -4,6 +4,7 @@
 
 ### Improvements
 * Added the opt-in `Tag.RcDataRecover` option to recover content after missing `title` or `textarea` end tags. [#2640](https://github.com/jhy/jsoup/issues/2640)
+* `Node.absUrl()` (and `attr("abs:srcset")`) now resolves each candidate URL in srcset-style attributes, such as `srcset` and `imagesrcset`, preserving each candidate's descriptor. [#2603](https://github.com/jhy/jsoup/issues/2603)
 
 ### Bug Fixes
 * Fixed `Element.shallowClone()`, `Document.shallowClone()`, and `Document.clone()` which could retain cached child elements from the original. After adding children to a shallow clone, `children()` could return the original's children instead of the clone's own. [#2638](https://github.com/jhy/jsoup/issues/2638)

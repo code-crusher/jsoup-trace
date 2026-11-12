@@ -247,6 +247,11 @@ public abstract class Node implements Cloneable {
      * absolute using that.
      * </p>
      * <p>
+     * If the attribute is a srcset-style attribute (such as <code>srcset</code> or <code>imagesrcset</code>), the
+     * value is treated as a list of image candidates, and the URL of each candidate is made absolute. E.g.:
+     * <code>String absSrcset = img.absUrl("srcset");</code>
+     * </p>
+     * <p>
      * As an alternate, you can use the {@link #attr} method with the <code>abs:</code> prefix, e.g.:
      * <code>String absUrl = linkEl.attr("abs:href");</code>
      * </p>
@@ -262,7 +267,11 @@ public abstract class Node implements Cloneable {
         if (!(hasAttributes() && attributes().hasKeyIgnoreCase(attributeKey))) // not using hasAttr, so that we don't recurse down hasAttr->absUrl
             return "";
 
-        return StringUtil.resolve(baseUri(), attributes().getIgnoreCase(attributeKey));
+        String value = attributes().getIgnoreCase(attributeKey);
+        if (StringUtil.isSrcsetAttribute(attributeKey))
+            return StringUtil.resolveSrcset(baseUri(), value);
+
+        return StringUtil.resolve(baseUri(), value);
     }
 
     protected abstract List<Node> ensureChildNodes();
