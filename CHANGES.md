@@ -4,6 +4,7 @@
 
 ### Improvements
 * The build's Android API compatibility check now uses the Animal Sniffer `coreLib2Nio` signature of `gummy-bears-api-21` 0.16.0 (core library desugaring plus `java.nio.file`), with the classifier support in Animal Sniffer 1.29. This replaces the broad set of desugared API ignores with the actual desugared API surface.
+  This requires Maven 3.9+, so the build now ships the Maven Wrapper (`./mvnw`) and CI uses it.
 * Added the opt-in `Tag.RcDataRecover` option to recover content after missing `title` or `textarea` end tags. [#2640](https://github.com/jhy/jsoup/issues/2640)
 
 ### Bug Fixes

@@ -25,8 +25,8 @@ jobs:
           cache: 'maven'
 
       - name: Maven Compile
-        run: mvn -X compile -B --file pom.xml
+        run: ./mvnw -X compile -B --file pom.xml
 
       - name: Maven Verify
-        run: mvn -X verify -B --file pom.xml
+        run: ./mvnw -X verify -B --file pom.xml
 ...
